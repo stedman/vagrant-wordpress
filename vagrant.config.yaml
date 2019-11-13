@@ -1,0 +1,22 @@
+---
+options:
+  box: "ubuntu/trusty64"
+  hostname: "wordpress.local"
+  ip: "192.168.33.10"
+  forwarded_ports:
+    - guest: 80
+      host: 8080
+    - guest: 3306
+      host: 3306
+  synced_folders:
+    - host: "./wp-content"
+      guest: "/var/www/html/wp-content"
+  wordpress:
+    release: "latest"
+    user: "admin"
+    password: "admin"
+    email: "no@spam.org"
+    db:
+      name: "wordpress"
+      user: "wordpress"
+      password: "wordpress"

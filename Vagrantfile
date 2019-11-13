@@ -1,74 +1,108 @@
+# encoding: utf-8
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-# All Vagrant configuration is done below. The "2" in Vagrant.configure
-# configures the configuration version (we support older styles for
-# backwards compatibility). Please don't change it unless you know what
-# you're doing.
+require "yaml"
+
+current_dir = File.dirname(File.expand_path(__FILE__))
+config_file = YAML.load_file("#{current_dir}/vagrant.config.yaml")
+opt         = config_file['options']
+
 Vagrant.configure("2") do |config|
-  # The most common configuration options are documented and commented below.
-  # For a complete reference, please see the online documentation at
-  # https://docs.vagrantup.com.
+  config.vm.box = opt["box"]
+  # Run `vagrant box outdated` to check for updates.
+  config.vm.box_check_update = false
 
-  # Every Vagrant development environment requires a box. You can search for
-  # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "ubuntu/trusty64"
+  opt["forwarded_ports"].each do |port|
+    config.vm.network "forwarded_port", guest: port["guest"], host: port["host"]
+  end
 
-  # Disable automatic box update checking. If you disable this, then
-  # boxes will only be checked for updates when the user runs
-  # `vagrant box outdated`. This is not recommended.
-  # config.vm.box_check_update = false
+  config.vm.network "private_network", ip: opt["ip"]
+  config.vm.hostname = opt["hostname"]
 
-  # Create a forwarded port mapping which allows access to a specific port
-  # within the machine from a port on the host machine. In the example below,
-  # accessing "localhost:8080" will access port 80 on the guest machine.
-  # NOTE: This will enable public access to the opened port
-  config.vm.network "forwarded_port", guest: 80, host: 8080
-  config.vm.network "forwarded_port", guest: 3306, host: 3306
+  # Update system /etc/hosts to use hostname from above.
+  if Vagrant.has_plugin?("vagrant-hostsupdater")
+    config.hostsupdater.remove_on_suspend = true
+  else
+    config.vagrant.plugins = "vagrant-hostsupdater"
+  end
 
-  # Create a forwarded port mapping which allows access to a specific port
-  # within the machine from a port on the host machine and only allow access
-  # via 127.0.0.1 to disable public access
-  # config.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
+  opt["synced_folders"].each do |folder|
+    config.vm.synced_folder folder['host'], folder['guest']
+  end
 
-  # Create a private network, which allows host-only access to the machine
-  # using a specific IP.
-  # config.vm.network "private_network", ip: "192.168.33.10"
-  # Rather than the above, use commonly expected local IP for development.
-  config.vm.network "private_network", ip: "127.0.0.1"
+  config.vm.provision "shell", inline: <<-SHELL
+    echo "Provisioning WordPress VM..."
+    WP_RELEASE="#{opt['wordpress']['release']}"
+    WP_DOMAIN="#{opt['hostname']}"
+    WP_ADMIN_USERNAME="#{opt['wordpress']['user']}"
+    WP_ADMIN_PASSWORD="#{opt['wordpress']['password']}"
+    WP_ADMIN_EMAIL="#{opt['wordpress']['email']}"
+    WP_DB_NAME="#{opt['wordpress']['db']['name']}"
+    WP_DB_USERNAME="#{opt['wordpress']['db']['user']}"
+    WP_DB_PASSWORD="#{opt['wordpress']['db']['password']}"
+    MYSQL_ROOT_PASSWORD="root"
 
-  # Create a public network, which generally matched to bridged network.
-  # Bridged networks make the machine appear as another physical device on
-  # your network.
-  # config.vm.network "public_network"
+    apt-get update
+    apt-get upgrade
 
-  # Share an additional folder to the guest VM. The first argument is
-  # the path on the host to the actual folder. The second argument is
-  # the path on the guest to mount the folder. And the optional third
-  # argument is a set of non-required options.
-  config.vm.synced_folder "./wp-content", "/var/www/html/wp-content"
+    echo "Installing Apache web server..."
+    apt-get install -y apache2
 
-  # Provider-specific configuration so you can fine-tune various
-  # backing providers for Vagrant. These expose provider-specific options.
-  # Example for VirtualBox:
-  #
-  # config.vm.provider "virtualbox" do |vb|
-  #   # Display the VirtualBox GUI when booting the machine
-  #   vb.gui = true
-  #
-  #   # Customize the amount of memory on the VM:
-  #   vb.memory = "1024"
-  # end
-  #
-  # View the documentation for the provider you are using for more
-  # information on available options.
+    # if ! [ -L /var/www ]; then
+    #   rm -rf /var/www
+    #   ln -fs /vagrant /var/www
+    # fi
 
-  # Enable provisioning with a shell script. Additional provisioners such as
-  # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
-  # documentation for more information about their specific syntax and use.
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   apt-get update
-  #   apt-get install -y apache2
-  # SHELL
-  config.vm.provision :shell, path: "bootstrap.sh"
+    echo "Configuring Apache..."
+    # Append desired server name to Apache config file.
+    # echo "ServerName localhost" >> /etc/apache2/apache2.conf
+    a2enmod rewrite
+    service apache2 restart
+
+    echo "Installing PHP..."
+    apt-get install -y php5 php5-mysql
+
+    echo "Installing MySQL..."
+    debconf-set-selections <<< "mysql-server mysql-server/root_password password root"
+    debconf-set-selections <<< "mysql-server mysql-server/root_password_again password root"
+    apt-get install -y mysql-server
+
+    echo "Setting up MySQL database..."
+    echo "CREATE USER $WP_DB_USERNAME@localhost IDENTIFIED BY '$WP_DB_PASSWORD';" | mysql -uroot -p$MYSQL_ROOT_PASSWORD
+    echo "CREATE DATABASE $WP_DB_NAME;" | mysql -uroot -p$MYSQL_ROOT_PASSWORD
+    echo "GRANT ALL ON $WP_DB_NAME.* TO $WP_DB_USERNAME@localhost;" | mysql -uroot -p$MYSQL_ROOT_PASSWORD
+
+    echo "Installing wp-cli..."
+    curl -sS -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+    chmod +x wp-cli.phar
+    mv wp-cli.phar /usr/local/bin/wp
+
+    echo "Downloading WordPpress release '${WP_RELEASE}'..."
+    cd /var/www/html
+    curl -sS https://wordpress.org/$WP_RELEASE.tar.gz | tar xfz -
+    mv wordpress/* .
+    rm index.html
+    rmdir wordpress
+    # rm wordpress.tar.gz
+
+    echo "Updating Wordpress configuration file..."
+    cp -f wp-config-sample.php wp-config.php
+    sed -i s/database_name_here/$WP_DB_NAME/ wp-config.php
+    sed -i s/username_here/$WP_DB_USERNAME/ wp-config.php
+    sed -i s/password_here/$WP_DB_PASSWORD/ wp-config.php
+    echo "define('FS_METHOD', 'direct');" >> wp-config.php
+
+    chown -R www-data:www-data /var/www/html
+
+    echo "Initializing WordPress settings..."
+    curl -sS "http://$WP_DOMAIN/wp-admin/install.php?step=2" \
+      --data-urlencode "weblog_title=$WP_DOMAIN"\
+      --data-urlencode "user_name=$WP_ADMIN_USERNAME" \
+      --data-urlencode "admin_email=$WP_ADMIN_EMAIL" \
+      --data-urlencode "admin_password=$WP_ADMIN_PASSWORD" \
+      --data-urlencode "admin_password2=$WP_ADMIN_PASSWORD" \
+      --data-urlencode "pw_weak=1"
+
+  SHELL
 end

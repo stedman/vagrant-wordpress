@@ -9,12 +9,9 @@
     cd <project_name>
     ```
 
-2. Copy `Vagrantfile.sample` to a `Vagrantfile` and then edit the new file in the editor of your choice.
+2. Open `vagrant.config.yaml` and update options as needed.
 
-    ```sh
-    cp Vagrantfile.sample Vagrantfile
-    code ./Vagrantfile  ## <-- assumes you're using VSCode to edit file
-    ```
+    Note: if you want to target a specific WordPress release, make sure you prefix the `options.wordpress.release` value with `wordpress-`. For example: `wordpress-5.1.3`.
 
 3. Start up Vagrant.
 
@@ -43,4 +40,7 @@ vagrant reload
 ## Reference
 
 - [getting started with Vagrant](https://www.vagrantup.com/intro/getting-started/)
+- [provisioning Vagrant](https://www.vagrantup.com/docs/provisioning/)
 - [available Vagrant boxes](https://app.vagrantup.com/boxes/search)
+- https://gist.githubusercontent.com/JonTheNiceGuy/73dea1fa23209b1b7d48f7ded2d34274/raw/d6f767618bd0b91a05b26d9fd8182c787e9f2714/Vagrantfile
+- https://peteris.rocks/blog/unattended-installation-of-wordpress-on-ubuntu-server/
