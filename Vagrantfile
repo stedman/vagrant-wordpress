@@ -3,6 +3,7 @@
 # vi: set ft=ruby :
 
 require "yaml"
+require "fileutils"
 
 current_dir = File.dirname(File.expand_path(__FILE__))
 config_file = YAML.load_file("#{current_dir}/vagrant.config.yaml")
@@ -20,20 +21,25 @@ Vagrant.configure("2") do |config|
   config.vm.network "private_network", ip: opt["ip"]
   config.vm.hostname = opt["hostname"]
 
-  # Update system /etc/hosts to use hostname from above.
+  # Update local /etc/hosts to use hostname from above.
   if Vagrant.has_plugin?("vagrant-hostsupdater")
     config.hostsupdater.remove_on_suspend = true
   else
     config.vagrant.plugins = "vagrant-hostsupdater"
   end
 
-  opt["synced_folders"].each do |folder|
-    config.vm.synced_folder folder['host'], folder['guest']
+  if opt["synced_folders"]
+    opt["synced_folders"].each do |folder|
+      # Create local directory in case it doesn't already exist.
+      FileUtils.mkdir_p(folder['host'])
+
+      config.vm.synced_folder folder['host'], folder['guest']
+    end
   end
 
   config.vm.provision "shell", inline: <<-SHELL
     echo "Provisioning WordPress VM..."
-    WP_RELEASE="#{opt['wordpress']['release']}"
+    WP_RELEASE="#{opt['wordpress']['release'] || 'latest'}"
     WP_DOMAIN="#{opt['hostname']}"
     WP_ADMIN_USERNAME="#{opt['wordpress']['user']}"
     WP_ADMIN_PASSWORD="#{opt['wordpress']['password']}"
@@ -103,6 +109,25 @@ Vagrant.configure("2") do |config|
       --data-urlencode "admin_password=$WP_ADMIN_PASSWORD" \
       --data-urlencode "admin_password2=$WP_ADMIN_PASSWORD" \
       --data-urlencode "pw_weak=1"
+
+    echo
+    echo "======================================"
+    echo "          VARIABLE DUMP"
+    echo "======================================"
+    echo "WP_RELEASE = $WP_RELEASE"
+    echo "WP_DOMAIN = $WP_DOMAIN"
+    echo "WP_ADMIN_USERNAME = $WP_ADMIN_USERNAME"
+    echo "WP_ADMIN_PASSWORD = $WP_ADMIN_PASSWORD"
+    echo "WP_ADMIN_EMAIL = $WP_ADMIN_EMAIL"
+    echo "WP_DB_NAME = $WP_DB_NAME"
+    echo "WP_DB_USERNAME = $WP_DB_USERNAME"
+    echo "WP_DB_PASSWORD = $WP_DB_PASSWORD"
+    echo
+    echo "Open http://$WP_DOMAIN/wp-admin/"
+    echo "and log in with"
+    echo "Username: $WP_ADMIN_USERNAME"
+    echo "Password: $WP_ADMIN_PASSWORD"
+    echo
 
   SHELL
 end

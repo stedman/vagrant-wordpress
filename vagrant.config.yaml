@@ -9,10 +9,10 @@ options:
     - guest: 3306
       host: 3306
   synced_folders:
-    - host: "./wp-content"
-      guest: "/var/www/html/wp-content"
+    # - host: "./wp-content"
+    #   guest: "/var/www/html/wp-content"
   wordpress:
-    release: "latest"
+    release: "wordpress-5.1.3"  ## default is 'latest'
     user: "admin"
     password: "admin"
     email: "no@spam.org"

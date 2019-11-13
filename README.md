@@ -11,7 +11,7 @@
 
 2. Open `vagrant.config.yaml` and update options as needed.
 
-    Note: if you want to target a specific WordPress release, make sure you prefix the `options.wordpress.release` value with `wordpress-`. For example: `wordpress-5.1.3`.
+    **Note:** The box `ubuntu/trusty64` requires max WordPress version `wordpress-5.1.3`. If you update the box to a later version, you may be able to comment-out the wordpress release line (which will install the latest WP version).
 
 3. Start up Vagrant.
 
